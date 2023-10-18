@@ -8,27 +8,27 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "service"]
 
-    steps:        
+    container:
+      image: docker:git
+
+    steps:      
       - run: cd /tmp
 
-      - uses: actions/setup-java@v3.5.0
-        with:
-          distribution: "temurin"
-          java-version: "18"
+      - name: 'Add bash, curl, rlwrap, make, python, java'
+        run: apk update && apk upgrade && apk add bash curl rlwrap make python3 py3-pip openjdk17 postgresql
+        
+      - name: 'Install clojure'
+        run: curl -O https://download.clojure.org/install/linux-install-1.11.1.1208.sh && chmod +x linux-install-1.11.1.1208.sh && ./linux-install-1.11.1.1208.sh
 
-      - uses: DeLaGuardo/setup-clojure@9.5
-        with:
-          cli: 1.11.1.1155
-      
       - uses: actions/checkout@v3.0.2
         with:
           fetch-depth: 0
           submodules: 'recursive'
           
-      - name: 'Set environment variable for working directory'
-        run: echo "WORKING_DIR_PATH=$(pwd)" >> $GITHUB_ENV
+      - name: 'Set environment variable for RXNORM working directory'
+        run: echo "RXNORM_WORKING_DIR_PATH=$(pwd)" >> $GITHUB_ENV
 
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v1'
@@ -50,13 +50,30 @@ jobs:
           git config --global user.email "hello@health-samurai.io" && \
           git config --global user.name "zen-fhir/rxnorm GH Action—Release"
       
-      - run: cd /tmp/ftr-git-repo && make up && cd -
+      - run: cd /tmp/ftr-git-repo && docker compose rm -v -f && make up && cd -
+      
+      - name: 'Create script for starting PostgreSQL'
+        run: |
+          cat > /tmp/postgres.sh <<EOF
+          #!/bin/sh
+          
+          initdb -D /var/lib/postgresql/data
+          nohup postgres -p 5125 -D /var/lib/postgresql/data -k /tmp > /dev/null 2>/dev/null &
+          
+          sleep 5
+          echo "CREATE USER ftr password 'ftr'" | psql -h localhost -p 5125
+          echo "ALTER USER ftr WITH SUPERUSER" | psql -h localhost -p 5125
+          echo "CREATE DATABASE ftr" | psql -h localhost -p 5125
+          EOF
+        
+      - name: 'Start PostgreSQL'
+        run: chmod 755 /tmp/postgres.sh && su postgres -c /tmp/postgres.sh
         
       - name: 'Run FTR tests'
         run: cd /tmp/ftr-git-repo && make test
         
       - name: 'Silence all safe.directory warnings (otherwise pushing RXNORM zen package to git fails)'
-        run: git config --global --add safe.directory $WORKING_DIR_PATH
+        run: git config --global --add safe.directory $RXNORM_WORKING_DIR_PATH
       
       - name: 'Publish updated RXNORM FTR and zen package'
         env:
@@ -65,14 +82,15 @@ jobs:
           UMLS_API_KEY: ${{ secrets.UMLS_API_KEY }}
         run: |
           cd /tmp/ftr-git-repo && \
-          clojure -X:pipeline ftr.ci-pipelines.rxnorm.core/pipeline \
+          clj -X:pipeline ftr.ci-pipelines.rxnorm.core/pipeline \
           :tg-bot-token '"'$TG_UPDATES_BOT_TOKEN'"' \
           :tg-channel-id '"'$TG_FTR_UPDATES_CHAT_ID'"' \
           :api-key '"'$UMLS_API_KEY'"' \
           :gs-object-url '"gs://ftr/rxnorm"' \
           :gs-ftr-object-url '"gs://ftr"' \
-          :working-dir-path '"'$WORKING_DIR_PATH'"' \
+          :working-dir-path '"'$RXNORM_WORKING_DIR_PATH'"' \
           :ci-run-url '"https://github.com/'$GITHUB_REPOSITORY'/actions/runs/'$GITHUB_RUN_ID'"'
+          
       - name: 'Fail notifier'
         if: always()
         run: |
@@ -83,3 +101,4 @@ jobs:
                   -d "parse_mode=HTML" \
                   -d "text=❌ RXNORM pipeline failed prematurely. <a href=\"https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\">See CI run.</a>"
               fi
+         
