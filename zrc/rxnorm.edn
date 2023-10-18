@@ -1,0 +1,17 @@
+{ns rxnorm,
+ import #{zen.fhir},
+ value-set
+ {:zen/tags #{zen.fhir/value-set},
+  :zen/desc "Includes all concepts from RxNorm.",
+  :zen.fhir/version "0.6.0",
+  :fhir/code-systems
+  #{{:fhir/url "http://www.nlm.nih.gov/research/umls/rxnorm",
+     :zen.fhir/content :bundled}},
+  :uri "http://www.nlm.nih.gov/research/umls/rxnorm/valueset",
+  :version "10022023",
+  :ftr
+  {:module "rxnorm",
+   :source-url "https://storage.googleapis.com",
+   :ftr-path "ftr",
+   :source-type :cloud-storage,
+   :tag "prod"}}}
