@@ -8,7 +8,7 @@
   #{{:fhir/url "http://www.nlm.nih.gov/research/umls/rxnorm",
      :zen.fhir/content :bundled}},
   :uri "http://www.nlm.nih.gov/research/umls/rxnorm/valueset",
-  :version "07012024",
+  :version "08052024",
   :ftr
   {:module "rxnorm",
    :source-url "https://storage.googleapis.com",
